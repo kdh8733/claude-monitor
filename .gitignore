@@ -1,0 +1,38 @@
+# ── 실데이터 차단 (공개 레포 - 절대 완화하지 말 것) ────────────────
+# 트랜스크립트에는 프롬프트 원문과 실제 프로젝트명이 들어 있다.
+# 한 번 커밋되면 git 히스토리에서 지우기 어렵고, GitHub은 인덱싱된다.
+/data/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.duckdb
+*.parquet
+snapshots/
+transcripts/
+
+# 자격증명
+.credentials.json
+.env
+.env.*
+!.env.example
+*.token
+
+# 데모 시드는 예외 (익명화된 합성 데이터만)
+!/fixtures/demo/**
+
+# ── 빌드 산출물 ──────────────────────────────────────────────────
+node_modules/
+.next/
+out/
+dist/
+build/
+*.tsbuildinfo
+.turbo/
+.vercel/
+coverage/
+
+# ── 도구 ─────────────────────────────────────────────────────────
+.DS_Store
+*.log
+__pycache__/
+.venv/
