@@ -93,6 +93,18 @@ test('nonzero tokens on an unknown model still yield null', () => {
   assert.equal(apiEquivalentUsd('claude-unknown-9', null, null, at('2026-07-09T00:00:00Z'), t), null);
 });
 
+// 실측(15,921건)상 cache_creation_input_tokens == 5m + 1h 다. 깨지면 조용히 $0 이 되는 자리다.
+test('unbroken-down cache_creation yields null, not a silent zero', () => {
+  const t = at('2026-07-09T00:00:00Z');
+  const opts = { ...NONE, cacheCreation5mTokens: 100, cacheCreation1hTokens: 0 };
+
+  assert.equal(apiEquivalentUsd('claude-opus-4-8', 'standard', 'standard', t,
+    { ...opts, cacheCreationInputTokens: 100 }) !== null, true, '정합하면 계산돼야 한다');
+
+  assert.equal(apiEquivalentUsd('claude-opus-4-8', 'standard', 'standard', t,
+    { ...opts, cacheCreationInputTokens: 500 }), null, '분해 안 된 400 토큰이 조용히 무시됐다');
+});
+
 test('no duplicate (model, speed, tier, effectiveFrom) rows', () => {
   const keys = PRICES.map((p) => `${p.model}|${p.speed}|${p.serviceTier}|${p.effectiveFrom}`);
   assert.equal(new Set(keys).size, keys.length);

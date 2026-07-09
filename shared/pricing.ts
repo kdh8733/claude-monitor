@@ -63,6 +63,12 @@ export interface TokenCounts {
   cacheReadInputTokens: number;
   cacheCreation5mTokens: number;
   cacheCreation1hTokens: number;
+  /**
+   * `message.usage.cache_creation_input_tokens`. 실측(15,921건)상 항상 5m + 1h 와 같다.
+   * 주면 정합성을 검사한다. 분해되지 않은 잔여분이 있으면 어느 배수를 곱할지 모르므로
+   * null(모른다)을 낸다. 조용히 $0 으로 과소계상하지 않는다.
+   */
+  cacheCreationInputTokens?: number;
 }
 
 /**
@@ -100,6 +106,13 @@ export function apiEquivalentUsd(
   atMs: number,
   tokens: TokenCounts,
 ): number | null {
+  // cache_creation 이 5m/1h 로 분해되지 않았으면 어느 배수를 곱할지 모른다.
+  // 조용히 $0 으로 과소계상하느니 모른다고 답한다.
+  if (tokens.cacheCreationInputTokens !== undefined
+    && tokens.cacheCreationInputTokens > tokens.cacheCreation5mTokens + tokens.cacheCreation1hTokens) {
+    return null;
+  }
+
   // 토큰이 하나도 없으면 단가를 몰라도 비용은 0 이다. Claude Code 가 만드는 `<synthetic>`
   // 메시지가 여기 해당한다 (실측: 토큰 전부 0). 이걸 "단가 미상"으로 세면 잡음만 늘어난다.
   const total = tokens.inputTokens + tokens.outputTokens + tokens.cacheReadInputTokens
