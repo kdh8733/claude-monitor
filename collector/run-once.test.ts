@@ -276,5 +276,5 @@ test('migrate is idempotent', () => {
   migrate(db);
   migrate(db);
   const row = db.prepare('PRAGMA user_version').get() as { user_version: number };
-  assert.equal(row.user_version, 1);
+  assert.equal(row.user_version, 2); // M3에서 transcript_file 추가로 v2
 });
