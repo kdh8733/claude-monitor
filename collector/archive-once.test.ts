@@ -249,9 +249,9 @@ test('v1 database migrates to v2 preserving snapshot rows', () => {
     .run(1234, '{"five_hour":{"utilization":21}}');
   legacy.close();
 
-  const db = openDb(path); // migrate가 v1 -> v2만 적용해야 한다
+  const db = openDb(path); // migrate가 v1 이후 단계만 순서대로 밟는다 (현재 최신 v3)
   const version = db.prepare('PRAGMA user_version').get() as { user_version: number };
-  assert.equal(version.user_version, 2);
+  assert.equal(version.user_version, 3);
   const snap = db.prepare('SELECT raw_json FROM snapshot').get() as { raw_json: string };
   assert.equal(snap.raw_json, '{"five_hour":{"utilization":21}}');
   db.prepare('SELECT count(*) AS n FROM transcript_file').get(); // 테이블 존재

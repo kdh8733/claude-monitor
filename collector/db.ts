@@ -46,6 +46,43 @@ CREATE TABLE transcript_file (
 );
 `;
 
+// M5 파서 산출. grain = message.id (004 C2: 라인을 SUM 하면 output 2.5~3.0배 과대계상).
+// dedup 은 종단(=최대 output) usage 승리 - 전수 실측상 output 단조 비감소, 종단 == max 100%.
+// raw_usage_json 이 usage 의 진실 (server_tool_use 등 미승격 필드 보존, CLAUDE.md 3항).
+const DDL_V3 = `
+CREATE TABLE usage_event (
+  message_id    TEXT PRIMARY KEY,        -- 전역 유일. dedup·정체성 키 (004 C2)
+  captured_at   INTEGER NOT NULL,        -- 라인 timestamp 를 UTC ms 로. 단가·윈도우 조회축
+  source_id     TEXT NOT NULL,           -- 'wsl' | 'windows'. provenance (정체성 불참여)
+  session_id    TEXT,                    -- 귀속 그룹핑용. dedup 키가 아니다
+  cwd           TEXT,                    -- 프로젝트 귀속에 필수
+  git_branch    TEXT,
+  model         TEXT,
+  service_tier  TEXT,
+  speed         TEXT,                    -- NULL 가능 (구버전 기록). 단가 차원 (004 C4)
+  is_sidechain  INTEGER,                 -- 서브에이전트 판별
+  request_id    TEXT,
+  input_tokens                INTEGER NOT NULL DEFAULT 0,
+  output_tokens               INTEGER NOT NULL DEFAULT 0,
+  cache_read_input_tokens     INTEGER NOT NULL DEFAULT 0,
+  cache_creation_input_tokens INTEGER NOT NULL DEFAULT 0,
+  cache_creation_5m_tokens    INTEGER NOT NULL DEFAULT 0,
+  cache_creation_1h_tokens    INTEGER NOT NULL DEFAULT 0,
+  raw_usage_json TEXT NOT NULL           -- message.usage 원본 verbatim
+);
+CREATE INDEX ix_ue_captured ON usage_event(captured_at);
+CREATE INDEX ix_ue_model    ON usage_event(model);
+CREATE INDEX ix_ue_session  ON usage_event(session_id);
+CREATE INDEX ix_ue_source   ON usage_event(source_id);
+
+-- 파싱 부기. 아카이브는 불변이거나 통째로 갱신되므로 mtime 으로 재파싱 여부를 판단한다.
+CREATE TABLE parsed_archive (
+  archive_path TEXT PRIMARY KEY,   -- archiveRoot 기준 상대경로
+  mtime_ms     INTEGER NOT NULL,
+  parsed_at    INTEGER NOT NULL
+);
+`;
+
 export function openDb(path: string): DatabaseSync {
   const db = new DatabaseSync(path);
   db.exec('PRAGMA journal_mode = WAL');
@@ -66,5 +103,10 @@ export function migrate(db: DatabaseSync): void {
   if (version < 2) {
     db.exec(DDL_V2);
     db.exec('PRAGMA user_version = 2');
+    version = 2;
+  }
+  if (version < 3) {
+    db.exec(DDL_V3);
+    db.exec('PRAGMA user_version = 3');
   }
 }
