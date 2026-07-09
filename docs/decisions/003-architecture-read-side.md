@@ -6,6 +6,12 @@
 
 ---
 
+> **[조정 2026-07-09]** `004-reconciliation.md` 가 이 문서의 일부를 덮는다. 충돌 항목은 004가 우선한다.
+> - 축 4: 모노레포 -> **단일 패키지** (수집기의 런타임 의존성이 0이라 격리할 대상이 없음).
+> - 축 2: 단가 키를 `(model, speed, service_tier, effective_from)` 로 확장. 표의 **값은 여전히 미검증**.
+> - 요구 6(dedup 키): `sessionId`/`requestId` 가 아니라 **`message.id`** (002 실측).
+> - 요구 3: `limits[]` 는 파생 컬럼이 아니라 `json_each` 로 읽는다.
+
 ## 배경·전제 (뒤집지 않는다)
 
 - 언어/런타임: Node 24 / TypeScript 단일. 저장: `node:sqlite`(WAL). 웹: Next.js App Router. 차트: visx. UI: shadcn/ui + Tailwind v4. (전부 001에서 승인.)
