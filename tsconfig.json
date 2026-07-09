@@ -2,8 +2,12 @@
   "compilerOptions": {
     "target": "es2023",
     "module": "nodenext",
-    "lib": ["es2023"],
-    "types": ["node"],
+    "lib": [
+      "es2023"
+    ],
+    "types": [
+      "node"
+    ],
     "strict": true,
     "noEmit": true,
     "allowImportingTsExtensions": true,
@@ -11,5 +15,8 @@
     "verbatimModuleSyntax": true,
     "skipLibCheck": true
   },
-  "include": ["collector"]
+  "include": [
+    "collector",
+    "shared"
+  ]
 }
