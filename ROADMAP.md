@@ -155,13 +155,13 @@ Windows 트랜스크립트에도 해당 시각 활동이 0건이므로 멀티머
 
 ### 1단계 - 기록을 시작한다 (가장 급함)
 
-- [ ] **M1 스냅샷 수집기 최소판** - `/api/oauth/usage` 폴링 -> raw JSON 통째로 SQLite 적재.
+- [x] **M1 스냅샷 수집기 최소판** (2026-07-09) - `/api/oauth/usage` 폴링 -> raw JSON 통째로 SQLite 적재.
   파생 컬럼(`five_hour_pct`, `weekly_all_pct`, `resets_at`)은 `json_extract` 로 뽑는다.
   파싱 실패가 적재 실패가 되지 않아야 한다 (모르는 필드 보존).
   - 검증: 5분 간격으로 30분 구동 후 `SELECT count(*) FROM snapshot` 이 6 (±1).
     응답 스키마에 없는 키를 주입한 픽스처로도 적재가 성공한다 (단위 테스트).
 
-- [ ] **M2 토큰 ride-along** - 수집기는 `~/.claude/.credentials.json` 을 **읽기만** 한다.
+- [x] **M2 토큰 ride-along** (2026-07-09) - 수집기는 `~/.claude/.credentials.json` 을 **읽기만** 한다.
   `refreshToken` 을 절대 소비·재기록하지 않는다 (회전 시 본체 Claude Code 인증 파손. `004` C5).
   `expiresAt` 이 지났으면 그 폴을 건너뛰고 `collector_run` 에 `auth_skip` 으로 남긴다.
   토큰은 로그/에러/커밋 어디에도 남기지 않는다 - 길이와 만료시각만 (`CLAUDE.md` 2항).
@@ -264,6 +264,18 @@ Windows 트랜스크립트에도 해당 시각 활동이 0건이므로 멀티머
   있어 유혹적이나, Goal이 "관측"이지 "개입"이 아니다.
 
 ## 완료 기록
+
+- [x] **M1 스냅샷 수집기 + M2 토큰 ride-along** (2026-07-09) - `npm test` 14/14,
+  `tsc --noEmit` exit 0, 런타임 의존성 0. 실 API 폴 2회 `status=ok`/`http_status=200`,
+  자격증명 파일 `sha256` 불변, 고아 스냅샷 0행, `journal_mode=wal`.
+  - **아직 검증 안 된 것 (정직):** M1의 원래 검증 문구는 "5분 간격으로 30분 구동"이었다.
+    벽시계 30분 구동은 하지 않았다. 대신 `runOnce` 6회 호출 -> 6행을 단위 테스트로 확인했다.
+    **스케줄러가 실제로 5분마다 깨우는지는 M4(cron 배선)에서 검증한다.**
+  - 실측이 설계를 반증한 것: `limits[]` 의 소진율 필드는 `utilization` 이 아니라 `percent` 다.
+    픽스처가 틀린 형태였고 테스트가 그 픽스처를 검증하며 green 이었다 (테스트가 현실이 아니라
+    자기 픽스처를 검증하는 전형). 실 응답 형태로 교체.
+  - 구현 중 잡은 결함 3건: `Bearer undefined` 전송 가능(자격증명 스키마 드리프트),
+    스냅샷/run 행 비원자성(불변식 I3 파손), fetch 타임아웃 부재(cron 프로세스 누적).
 
 - [x] **M0 프로젝트 초기 형상** (2026-07-09) - 검증: `setup.sh --check` 드리프트 없음,
   `.gitignore` 가 실파일(`data/leak-test.jsonl`, `usage.sqlite`)을 차단함을 `git check-ignore` 로 확인,
