@@ -65,6 +65,7 @@ export function HourHeatmap({ hourly }: { hourly: HourlyUsage[] }) {
                   fill={fillFor(v)}
                   stroke={v <= 0 ? 'var(--grid)' : 'none'}
                   strokeWidth={1}
+                  role="img"
                   tabIndex={0}
                   aria-label={`${h}시 (UTC): ${compactTokens(v)} 토큰`}
                   onPointerMove={() => show(h, cx + cellW / 2)}

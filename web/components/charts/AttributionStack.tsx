@@ -84,6 +84,7 @@ export function AttributionStack({ items, unitLabel }: { items: StackItem[]; uni
                 width={Math.max(seg.w - (i === 0 || i === segs.length - 1 ? GAP / 2 : GAP), 1)}
                 height={BAR_H}
                 fill={seg.color}
+                role="img"
                 tabIndex={0}
                 aria-label={`${seg.label}: ${compactTokens(seg.billable)} 토큰, ${((seg.billable / total) * 100).toFixed(0)}%`}
                 onPointerMove={() => show(seg)}

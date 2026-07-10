@@ -25,14 +25,18 @@ export function ThemeToggle() {
     setTheme(next);
   }
 
+  // 보이는 글자가 접근 가능한 이름에 포함되어야 한다 (음성 제어 사용자가 보이는 대로 말한다).
+  // "DARK" 버튼의 이름이 "다크 테마로 전환" 이면 그 이름을 말할 수 없다.
+  const visible = theme === null ? 'THEME' : theme === 'dark' ? 'LIGHT' : 'DARK';
+
   return (
     <button
       type="button"
       onClick={toggle}
-      aria-label={theme === 'dark' ? '라이트 테마로 전환' : '다크 테마로 전환'}
+      aria-label={`${visible} 테마로 전환`}
       className="micro rounded-md border border-hairline px-2.5 py-1.5 hover:bg-page"
     >
-      {theme === null ? 'THEME' : theme === 'dark' ? 'LIGHT' : 'DARK'}
+      {visible}
     </button>
   );
 }
