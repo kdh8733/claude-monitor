@@ -19,6 +19,8 @@ import {
   billableTokens,
   headroomSeries,
   latestCapturedAt,
+  collectorRunDaily,
+  latestRunAt,
 } from './queries.ts';
 
 const ROOTS = ['/root/workspace'];
@@ -88,6 +90,26 @@ test('projectLabel: null cwd -> <unknown>', () => {
 test('projectLabel: /root/workspaceX is NOT under /root/workspace (path boundary)', () => {
   // 경계 없는 startsWith 매칭이면 'X' 가 나온다. 올바른 답은 마지막 세그먼트 'foo'.
   assert.equal(projectLabel('/root/workspaceX/foo', ROOTS), 'foo');
+});
+
+// Windows 트랜스크립트의 cwd 는 `C:\Users\<user>\...` 형태다. `/` 로만 자르면 경로 전체가
+// 라벨이 되어 사용자명이 화면·리포트·스크린샷에 그대로 나간다 (실 DB 에서 18건 관측).
+test('projectLabel: windows paths do not leak as labels', () => {
+  assert.equal(projectLabel('C:\\Users\\alice\\dev\\widget', ROOTS), 'widget');
+  assert.equal(projectLabel('C:\\Users\\alice', ROOTS), 'alice');
+  assert.equal(projectLabel('D:\\work\\proj\\', ROOTS), 'proj');
+});
+
+test('projectLabel: no label ever contains a separator or a drive letter', () => {
+  const inputs = [
+    '/root/workspace/foo', '/root/.config/anthropic', '/root',
+    'C:\\Users\\alice\\dev\\widget', 'D:\\x', '/a/b/c', null,
+  ];
+  for (const cwd of inputs) {
+    const label = projectLabel(cwd, ROOTS);
+    assert.equal(/[\\/]/.test(label), false, `${cwd} -> ${label} 에 구분자가 있다`);
+    assert.equal(/^[A-Za-z]:/.test(label), false, `${cwd} -> ${label} 이 드라이브 문자로 시작한다`);
+  }
 });
 
 // ---- 2. abandonedHeadroom (완료 기준 5, 첫 질문) ----
@@ -333,4 +355,43 @@ test('latestCapturedAt: max snapshot captured_at; null when table is empty', () 
   assert.equal(latestCapturedAt(db), at('2026-07-02T10:00:00Z'));
   const empty = seededReadOnlyDb(() => {});
   assert.equal(latestCapturedAt(empty), null);
+});
+
+// ---- 10. collectorRunDaily / latestRunAt (수집 상태 탭 - auth_skip 을 감추지 않는다) ----
+
+test('collectorRunDaily: UTC 일 단위로 ok/failed/auth_skip 을 센다. snapshot 외 kind 와 구간 밖은 제외', () => {
+  const db = seededReadOnlyDb((w) => {
+    // 7/01: ok 2, http_error 1, auth_skip 1
+    insertRun(w, 'ok', at('2026-07-01T01:00:00Z'));
+    insertRun(w, 'ok', at('2026-07-01T02:00:00Z'));
+    insertRun(w, 'http_error', at('2026-07-01T03:00:00Z'));
+    insertRun(w, 'auth_skip', at('2026-07-01T04:00:00Z'));
+    // 7/02: error 1 (failed 로 합산), ok 1
+    insertRun(w, 'error', at('2026-07-02T01:00:00Z'));
+    insertRun(w, 'ok', at('2026-07-02T02:00:00Z'));
+    // 제외 대상: snapshot 이 아닌 kind, 구간 밖
+    insertRun(w, 'ok', at('2026-07-01T05:00:00Z'), 'prune');
+    insertRun(w, 'ok', at('2026-06-30T23:59:59Z'));
+  });
+  const rows = collectorRunDaily(db, at('2026-07-01T00:00:00Z'), at('2026-07-03T00:00:00Z'));
+  assert.deepEqual(rows, [
+    { dayUtc: '2026-07-01', ok: 2, failed: 1, authSkip: 1 },
+    { dayUtc: '2026-07-02', ok: 1, failed: 1, authSkip: 0 },
+  ]);
+});
+
+test('collectorRunDaily: empty range -> empty array', () => {
+  const db = seededReadOnlyDb(() => {});
+  assert.deepEqual(collectorRunDaily(db, 0, at('2026-07-03T00:00:00Z')), []);
+});
+
+test('latestRunAt: 마지막 snapshot run 발화 시각 (heartbeat). auth_skip 도 발화다. 빈 테이블은 null', () => {
+  const db = seededReadOnlyDb((w) => {
+    insertRun(w, 'ok', at('2026-07-01T01:00:00Z'));
+    insertRun(w, 'auth_skip', at('2026-07-01T02:00:00Z'));
+    insertRun(w, 'ok', at('2026-07-09T00:00:00Z'), 'prune'); // snapshot 이 아닌 kind 는 heartbeat 가 아니다
+  });
+  assert.equal(latestRunAt(db), at('2026-07-01T02:00:00Z'));
+  const empty = seededReadOnlyDb(() => {});
+  assert.equal(latestRunAt(empty), null);
 });

@@ -57,8 +57,10 @@ export function projectLabel(cwd: string | null, roots: string[]): string {
       if (first !== '') return first;
     }
   }
-  const segments = cwd.split('/').filter((s) => s !== '');
-  return segments.length > 0 ? segments[segments.length - 1] : '<unknown>';
+  // Windows 트랜스크립트의 cwd 는 `C:\Users\<user>\...` 다. `/` 로만 자르면 세그먼트가 하나뿐이라
+  // **경로 전체가 라벨이 되어 사용자명이 그대로 새어 나간다** (실 DB 에서 18건 관측).
+  const segments = cwd.split(/[\\/]+/).filter((s) => s !== '' && !/^[A-Za-z]:$/.test(s));
+  return segments.length > 0 ? segments[segments.length - 1]! : '<unknown>';
 }
 
 // ---- 버려진 헤드룸 (완료 기준 5, 첫 질문) ----
@@ -308,6 +310,48 @@ export interface CollectionGaps {
   authSkip: number;
   /** failed / (ok + failed) * 100. 분모 0 이면 0. */
   gapPct: number;
+}
+
+export interface RunDaily {
+  /** UTC 날짜 (yyyy-mm-dd). run 이 없는 날은 행이 없다. */
+  dayUtc: string;
+  ok: number;
+  /** error + http_error 합산 - collectionGaps 의 failed 와 같은 정의다. */
+  failed: number;
+  /** 감추지 않는다 - 데이터에 실제로 뚫린 구멍이다 (완료 기준 1). */
+  authSkip: number;
+}
+
+/** 수집 상태 탭용: snapshot run 의 상태를 UTC 일 단위로 센다. */
+export function collectorRunDaily(db: DatabaseSync, fromMs: number, toMs: number): RunDaily[] {
+  const rows = db.prepare(`
+    SELECT date(started_at / 1000, 'unixepoch') AS day_utc, status, count(*) AS n
+    FROM collector_run
+    WHERE kind = 'snapshot' AND started_at >= ? AND started_at < ?
+    GROUP BY day_utc, status
+    ORDER BY day_utc
+  `).all(fromMs, toMs) as Array<{ day_utc: string; status: string; n: number }>;
+
+  const byDay = new Map<string, RunDaily>();
+  for (const r of rows) {
+    let acc = byDay.get(r.day_utc);
+    if (acc === undefined) {
+      acc = { dayUtc: r.day_utc, ok: 0, failed: 0, authSkip: 0 };
+      byDay.set(r.day_utc, acc);
+    }
+    if (r.status === 'ok') acc.ok += r.n;
+    else if (r.status === 'auth_skip') acc.authSkip += r.n;
+    else if (r.status === 'error' || r.status === 'http_error') acc.failed += r.n;
+  }
+  return [...byDay.values()];
+}
+
+/** 마지막 snapshot run 발화 시각 (heartbeat). auth_skip 도 "수집기가 살아 있었다"는 증거다. */
+export function latestRunAt(db: DatabaseSync): number | null {
+  const row = db.prepare(`
+    SELECT max(started_at) AS t FROM collector_run WHERE kind = 'snapshot'
+  `).get() as { t: number | null };
+  return row.t;
 }
 
 export function collectionGaps(db: DatabaseSync, fromMs: number, toMs: number): CollectionGaps {

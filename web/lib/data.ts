@@ -15,9 +15,11 @@ import {
   attributionByModel,
   attributionByProject,
   collectionGaps,
+  collectorRunDaily,
   headroomSeries,
   hourlyUsage,
   latestCapturedAt,
+  latestRunAt,
   scopeRanking,
   type CollectionGaps,
   type HeadroomPoint,
@@ -25,6 +27,7 @@ import {
   type HourlyUsage,
   type ModelAttribution,
   type ProjectAttribution,
+  type RunDaily,
   type ScopeRank,
 } from '../../shared/queries.ts';
 
@@ -49,6 +52,10 @@ export interface DashboardData {
   models: ModelAttribution[];
   hourly: HourlyUsage[];
   gaps: CollectionGaps;
+  /** 수집 상태 탭: UTC 일 단위 run 상태 분포. auth_skip 을 감추지 않는다. */
+  runDaily: RunDaily[];
+  /** 마지막 snapshot run 발화 시각 (heartbeat). auth_skip 도 발화다. */
+  lastRunAt: number | null;
   /** 구간 합계. null = 단가 미상 이벤트 포함("모른다"이지 0이 아니다). **청구액이 아니다** (CLAUDE.md 6항). */
   apiEquivalentUsd: number | null;
 }
@@ -106,6 +113,8 @@ export function getDashboardData(): DashboardData {
       models: attributionByModel(db, fromMs, toMs),
       hourly: hourlyUsage(db, fromMs, toMs),
       gaps: collectionGaps(db, fromMs, toMs),
+      runDaily: collectorRunDaily(db, fromMs, toMs),
+      lastRunAt: latestRunAt(db),
       apiEquivalentUsd,
     };
   } finally {

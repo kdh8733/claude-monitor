@@ -18,6 +18,7 @@ const outDir = process.argv[2] ?? 'web/out';
 const FORBIDDEN = [
   { re: /\/root\/workspace\//, why: '실 파일시스템 경로' },
   { re: /\/mnt\/c\/Users\//, why: 'Windows 사용자 경로' },
+  { re: /[A-Za-z]:\\+Users\\+/, why: 'Windows 절대경로 (projectLabel 이 놓친 적 있다)' },
   { re: /\/home\/[a-z]/i, why: '홈 디렉터리 경로' },
   { re: /sk-ant-/, why: 'Anthropic API 키 접두사' },
   { re: /"accessToken"\s*:/, why: '자격증명 필드' },

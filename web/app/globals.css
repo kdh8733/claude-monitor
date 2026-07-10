@@ -142,3 +142,9 @@ html {
   color: var(--ink2);
   font-variant-numeric: tabular-nums;
 }
+/* 표의 숫자 열(첫 열 제외)은 우측 정렬 - 자릿수가 세로로 맞아야 비교가 된다.
+   기존 표는 전부 "라벨 1열 + 숫자 n열" 구조다. */
+.chart-table th:not(:first-child),
+.chart-table td:not(:first-child) {
+  text-align: right;
+}
