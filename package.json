@@ -8,7 +8,9 @@
     "dev": "next dev web",
     "build": "next build web",
     "start": "next start web",
-    "deploy": "npm run build && mkdir -p web/out/.vercel && cp web/.vercel/project.json web/out/.vercel/project.json && cd web/out && vercel deploy --prod --yes"
+    "deploy": "npm run build && mkdir -p web/out/.vercel && cp web/.vercel/project.json web/out/.vercel/project.json && cd web/out && vercel deploy --prod --yes",
+    "canary": "node scripts/canary.mjs web/out",
+    "verify": "npm test && npm run typecheck && npm run build && npm run canary"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.2",

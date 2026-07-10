@@ -1,0 +1,41 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - run: npm ci
+
+      # 수집기는 런타임 의존성이 0 이어야 한다. 늘어나면 여기서 막는다.
+      - name: collector has zero runtime dependencies
+        run: |
+          node -e '
+            const deps = require("./package.json").dependencies ?? {};
+            const web = new Set(["next","react","react-dom","@visx/scale","@visx/shape","@visx/group"]);
+            const extra = Object.keys(deps).filter((d) => !web.has(d));
+            if (extra.length) { console.error("web 이 아닌 런타임 의존성:", extra); process.exit(1); }
+            console.log("런타임 의존성:", Object.keys(deps).join(", ") || "(없음)");
+          '
+
+      - run: npm test
+      - run: npx tsc --noEmit
+      - run: npx tsc --noEmit -p web/tsconfig.json
+
+      # CI 러너에는 data/ 가 애초에 없다. 데모 빌드가 성공한다는 것 자체가
+      # "실데이터 없이도 빌드된다"의 증명이다.
+      - run: npm run build
+
+      - name: no real data in the build (completion criterion 6)
+        run: node scripts/canary.mjs web/out
