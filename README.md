@@ -1,5 +1,8 @@
 # claude-monitor
 
+**데모**: <https://claude-monitor-kim-donghyeons-projects.vercel.app>
+(완전 합성 시드다. 실데이터가 아니다.)
+
 Claude Max 구독의 **한도 소진율**과 **사용 귀속**을 지속 기록하는 개인용 대시보드.
 
 ## 왜 만드는가
