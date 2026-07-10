@@ -17,6 +17,8 @@ import {
   hourlyUsage,
   collectionGaps,
   billableTokens,
+  headroomSeries,
+  latestCapturedAt,
 } from './queries.ts';
 
 const ROOTS = ['/root/workspace'];
@@ -294,4 +296,41 @@ test('collectionGaps: all auth_skip -> gapPct=0 without dividing by zero, authSk
   assert.equal(r.failed, 0);
   assert.equal(r.authSkip, 5);
   assert.equal(r.gapPct, 0);
+});
+
+// ---- 8. headroomSeries (M10 시계열 - 리셋 톱니의 원자료) ----
+
+test('headroomSeries: in-range rows in time order, NULL weekly_all_pct rows dropped', () => {
+  const db = seededReadOnlyDb((w) => {
+    insertSnapshot(w, '2026-07-01T10:00:00Z', {
+      seven_day: { utilization: 40, resets_at: '2026-07-03T00:00:00Z' },
+    });
+    insertSnapshot(w, '2026-07-01T09:00:00Z', {
+      seven_day: { utilization: 38, resets_at: '2026-07-03T00:00:00Z' },
+    });
+    insertSnapshot(w, '2026-07-01T09:30:00Z', {}); // seven_day 없음 -> 파생 NULL -> 제외
+    insertSnapshot(w, '2026-06-01T00:00:00Z', { seven_day: { utilization: 99 } }); // 구간 밖
+  });
+  const rows = headroomSeries(db, at('2026-07-01T00:00:00Z'), at('2026-07-02T00:00:00Z'));
+  assert.deepEqual(rows, [
+    { t: at('2026-07-01T09:00:00Z'), weeklyAllPct: 38, weeklyReset: '2026-07-03T00:00:00Z' },
+    { t: at('2026-07-01T10:00:00Z'), weeklyAllPct: 40, weeklyReset: '2026-07-03T00:00:00Z' },
+  ]);
+});
+
+test('headroomSeries: empty range -> empty array', () => {
+  const db = seededReadOnlyDb(() => {});
+  assert.deepEqual(headroomSeries(db, 0, at('2026-07-02T00:00:00Z')), []);
+});
+
+// ---- 9. latestCapturedAt (대시보드 앵커 - 데모/라이브 공용, 벽시계를 읽지 않는다) ----
+
+test('latestCapturedAt: max snapshot captured_at; null when table is empty', () => {
+  const db = seededReadOnlyDb((w) => {
+    insertSnapshot(w, '2026-07-01T10:00:00Z', {});
+    insertSnapshot(w, '2026-07-02T10:00:00Z', {});
+  });
+  assert.equal(latestCapturedAt(db), at('2026-07-02T10:00:00Z'));
+  const empty = seededReadOnlyDb(() => {});
+  assert.equal(latestCapturedAt(empty), null);
 });

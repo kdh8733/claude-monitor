@@ -1,0 +1,140 @@
+@import 'tailwindcss';
+
+/* 디자인 토큰. 차트와 UI 가 같은 변수를 쓴다 - 라이트/다크가 한 시스템이다 (M9).
+   팔레트는 dataviz 검증 팔레트를 채택 (validate_palette.js 통과: light PASS+contrast WARN,
+   dark PASS+CVD floor WARN - 릴리프로 직접 라벨·표 뷰·2px 서피스 갭을 상시 제공한다). */
+
+@theme inline {
+  --color-page: var(--page);
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
+  --color-ink2: var(--ink2);
+  --color-mute: var(--mute);
+  --color-grid: var(--grid);
+  --color-baseline: var(--baseline);
+  --color-hairline: var(--hairline);
+  --color-accent: var(--accent);
+  --color-good: var(--status-good);
+  --font-sans: var(--font-plex-kr), 'Segoe UI', 'Apple SD Gothic Neo', sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+}
+
+:root {
+  --page: #f9f9f7;
+  --surface: #fcfcfb;
+  --ink: #0b0b0b;
+  --ink2: #52514e;
+  --mute: #898781;
+  --grid: #e1e0d9;
+  --baseline: #c3c2b7;
+  --hairline: rgba(11, 11, 11, 0.1);
+  --accent: #2a78d6;
+
+  /* categorical slots (고정 순서 - 엔티티를 따라간다, 순환 금지) */
+  --series-1: #2a78d6;
+  --series-2: #1baf7a;
+  --series-3: #eda100;
+  --series-4: #008300;
+
+  /* sequential (단일 색상 blue, 밝음→어두움. 히트맵 전용) */
+  --seq-1: #b7d3f6;
+  --seq-2: #86b6ef;
+  --seq-3: #5598e7;
+  --seq-4: #2a78d6;
+  --seq-5: #1c5cab;
+  --seq-6: #104281;
+
+  /* status (고정 - 테마를 타지 않는다. 아이콘/라벨 동반 필수) */
+  --status-good: #0ca30c;
+  --status-warning: #fab219;
+  --status-critical: #d03b3b;
+}
+
+[data-theme='dark'] {
+  --page: #0d0d0d;
+  --surface: #1a1a19;
+  --ink: #ffffff;
+  --ink2: #c3c2b7;
+  --mute: #898781;
+  --grid: #2c2c2a;
+  --baseline: #383835;
+  --hairline: rgba(255, 255, 255, 0.1);
+  --accent: #3987e5;
+
+  --series-1: #3987e5;
+  --series-2: #199e70;
+  --series-3: #c98500;
+  --series-4: #008300;
+
+  /* 다크에서는 앵커가 뒤집힌다: 0 에 가까운 값이 서피스(어두움) 쪽으로 물러난다 */
+  --seq-1: #104281;
+  --seq-2: #1c5cab;
+  --seq-3: #2a78d6;
+  --seq-4: #5598e7;
+  --seq-5: #86b6ef;
+  --seq-6: #b7d3f6;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --ink: #ffffff;
+    --ink2: #c3c2b7;
+    --mute: #898781;
+    --grid: #2c2c2a;
+    --baseline: #383835;
+    --hairline: rgba(255, 255, 255, 0.1);
+    --accent: #3987e5;
+
+    --series-1: #3987e5;
+    --series-2: #199e70;
+    --series-3: #c98500;
+    --series-4: #008300;
+
+    --seq-1: #104281;
+    --seq-2: #1c5cab;
+    --seq-3: #2a78d6;
+    --seq-4: #5598e7;
+    --seq-5: #86b6ef;
+    --seq-6: #b7d3f6;
+  }
+}
+
+html {
+  background: var(--page);
+  color: var(--ink);
+}
+
+/* 마이크로 라벨 - 계기판의 각인 느낌. mono + 대문자 + 자간 */
+.micro {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--mute);
+}
+
+/* 표 뷰 (모든 차트의 WCAG 쌍둥이) */
+.chart-table summary {
+  cursor: pointer;
+  width: fit-content;
+}
+.chart-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.75rem;
+}
+.chart-table th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--ink2);
+  padding: 0.25rem 0.75rem 0.25rem 0;
+  border-bottom: 1px solid var(--grid);
+}
+.chart-table td {
+  padding: 0.25rem 0.75rem 0.25rem 0;
+  border-bottom: 1px solid var(--grid);
+  color: var(--ink2);
+  font-variant-numeric: tabular-nums;
+}

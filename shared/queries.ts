@@ -86,6 +86,37 @@ export function abandonedHeadroom(db: DatabaseSync, fromMs: number, toMs: number
   return { samples: row.samples, meanUtilization: row.mean, abandonedPct: 100 - row.mean };
 }
 
+// ---- 헤드룸 시계열 (M10 - 리셋 톱니의 원자료) ----
+
+export interface HeadroomPoint {
+  t: number;
+  weeklyAllPct: number;
+  weeklyReset: string | null;
+}
+
+/**
+ * 구간 내 weekly_all 소진율 시계열. 파생 컬럼이 NULL 인 행(응답에 seven_day 가 없던 경우)은
+ * 점이 아니라 구멍이므로 제외한다. weekly_reset 은 리셋 경계 마커용 - 값이 바뀌는 지점이 경계다.
+ */
+export function headroomSeries(db: DatabaseSync, fromMs: number, toMs: number): HeadroomPoint[] {
+  const rows = db.prepare(`
+    SELECT captured_at, weekly_all_pct, weekly_reset
+    FROM snapshot
+    WHERE captured_at >= ? AND captured_at < ? AND weekly_all_pct IS NOT NULL
+    ORDER BY captured_at
+  `).all(fromMs, toMs) as Array<{ captured_at: number; weekly_all_pct: number; weekly_reset: string | null }>;
+  return rows.map((r) => ({ t: r.captured_at, weeklyAllPct: r.weekly_all_pct, weeklyReset: r.weekly_reset }));
+}
+
+/**
+ * 최신 스냅샷 시각. 대시보드의 시간 앵커다 - 벽시계(Date.now)가 아니라 데이터의 끝을 쓴다.
+ * 데모 빌드가 결정적이어야 하고(같은 시드 = 같은 화면), 라이브도 "수집된 마지막 시점"이 정직하다.
+ */
+export function latestCapturedAt(db: DatabaseSync): number | null {
+  const row = db.prepare('SELECT max(captured_at) AS t FROM snapshot').get() as { t: number | null };
+  return row.t;
+}
+
 // ---- 가장 먼저 차는 스코프 (완료 기준 5, 둘째 질문) ----
 
 export interface ScopeRank {
