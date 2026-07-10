@@ -36,3 +36,4 @@ coverage/
 *.log
 __pycache__/
 .venv/
+web/next-env.d.ts
