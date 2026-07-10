@@ -12,6 +12,7 @@ import {
   projectLabel,
   abandonedHeadroom,
   scopeRanking,
+  resetEvents,
   attributionByProject,
   attributionByModel,
   hourlyUsage,
@@ -201,6 +202,63 @@ test('scopeRanking: no snapshot at or before the cutoff -> empty array', () => {
     insertSnapshot(w, '2026-07-02T00:00:00Z', LIMITS_RAW); // 컷오프 이후뿐
   });
   assert.deepEqual(scopeRanking(db, at('2026-07-01T00:00:00Z')), []);
+});
+
+// ---- 3b. resetEvents (완료 기준 2) ----
+
+function rawWithLimits(limits: Array<{ kind: string; percent: number; resets_at: string | null }>): unknown {
+  return { five_hour: { utilization: 0 }, seven_day: { utilization: 0 }, limits };
+}
+
+test('resetEvents: a drop at the predicted resets_at is flagged predicted', () => {
+  const reset = '2026-07-10T13:00:00Z';
+  const db = seededReadOnlyDb((w) => {
+    insertSnapshot(w, '2026-07-10T12:55:00Z', rawWithLimits([{ kind: 'weekly_all', percent: 8, resets_at: reset }]));
+    insertSnapshot(w, '2026-07-10T13:00:00Z', rawWithLimits([{ kind: 'weekly_all', percent: 0, resets_at: null }]));
+  });
+  const ev = resetEvents(db, 0, Date.parse('2026-07-11T00:00:00Z'));
+  assert.equal(ev.length, 1);
+  assert.equal(ev[0]!.kind, 'weekly_all');
+  assert.equal(ev[0]!.predicted, true);
+  assert.equal(ev[0]!.fromPct, 8);
+  assert.equal(ev[0]!.toPct, 0);
+});
+
+// 실측 반례: 2026-07-09 18:00 에 예고 없이 전면 리셋이 일어났다. 이걸 predicted 로 잘못 표시하면
+// 대시보드가 "resets_at 이 항상 맞다"고 거짓말한다.
+test('resetEvents: a drop with no matching resets_at is flagged NOT predicted', () => {
+  const db = seededReadOnlyDb((w) => {
+    insertSnapshot(w, '2026-07-09T17:55:00Z', rawWithLimits([{ kind: 'weekly_all', percent: 49, resets_at: '2026-07-11T13:00:00Z' }]));
+    insertSnapshot(w, '2026-07-09T18:00:00Z', rawWithLimits([{ kind: 'weekly_all', percent: 0, resets_at: null }]));
+  });
+  const ev = resetEvents(db, 0, Date.parse('2026-07-10T00:00:00Z'));
+  assert.equal(ev.length, 1);
+  assert.equal(ev[0]!.predicted, false);
+});
+
+test('resetEvents: a small dip below the threshold is not a reset', () => {
+  const db = seededReadOnlyDb((w) => {
+    insertSnapshot(w, '2026-07-10T12:00:00Z', rawWithLimits([{ kind: 'weekly_all', percent: 50, resets_at: null }]));
+    insertSnapshot(w, '2026-07-10T12:05:00Z', rawWithLimits([{ kind: 'weekly_all', percent: 48, resets_at: null }]));
+  });
+  assert.equal(resetEvents(db, 0, Date.parse('2026-07-11T00:00:00Z'), 5).length, 0);
+});
+
+test('resetEvents: each scope is tracked independently', () => {
+  const r = '2026-07-10T13:00:00Z';
+  const db = seededReadOnlyDb((w) => {
+    insertSnapshot(w, '2026-07-10T12:55:00Z', rawWithLimits([
+      { kind: 'session', percent: 75, resets_at: r },
+      { kind: 'weekly_all', percent: 8, resets_at: r },
+    ]));
+    insertSnapshot(w, '2026-07-10T13:00:00Z', rawWithLimits([
+      { kind: 'session', percent: 0, resets_at: null },
+      { kind: 'weekly_all', percent: 8, resets_at: r },
+    ]));
+  });
+  const ev = resetEvents(db, 0, Date.parse('2026-07-11T00:00:00Z'));
+  assert.equal(ev.length, 1);
+  assert.equal(ev[0]!.kind, 'session');
 });
 
 // ---- 4. 귀속 집계 ----

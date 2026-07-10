@@ -110,6 +110,63 @@ export function headroomSeries(db: DatabaseSync, fromMs: number, toMs: number): 
   return rows.map((r) => ({ t: r.captured_at, weeklyAllPct: r.weekly_all_pct, weeklyReset: r.weekly_reset }));
 }
 
+export interface ResetEvent {
+  /** 하락이 관측된 스냅샷 시각 (UTC ms). */
+  t: number;
+  kind: string;
+  fromPct: number;
+  toPct: number;
+  /** 직전 스냅샷의 resets_at 이 이 하락을 예고했는가. 실측상 예고 없는 리셋도 존재한다. */
+  predicted: boolean;
+}
+
+/**
+ * 완료 기준 2. 구간 내에서 각 스코프(session/weekly_all/weekly_scoped)의 소진율이
+ * `minDropPct` 이상 하락한 지점(리셋 톱니)을 찾는다. `limits[]` 의 percent 로 본다
+ * (파생 컬럼이 아니라 - 파생 컬럼은 seven_day 최상위라 스코프별 리셋을 못 본다).
+ *
+ * **`predicted` 를 반드시 함께 낸다.** 실측상 resets_at 이 예고하지 않은 전면 리셋이 있다
+ * (2026-07-09 18:00). 완료 기준 2 는 "리셋 시각 전후로 하락이 관측된다" 이지 "resets_at 에서만
+ * 하락한다" 가 아니다. 예고 없는 리셋을 숨기면 대시보드가 거짓말을 한다.
+ */
+export function resetEvents(
+  db: DatabaseSync,
+  fromMs: number,
+  toMs: number,
+  minDropPct = 5,
+  toleranceMs = 6 * 60_000,
+): ResetEvent[] {
+  const rows = db.prepare(`
+    SELECT captured_at, raw_json FROM snapshot
+    WHERE captured_at >= ? AND captured_at < ?
+    ORDER BY captured_at
+  `).all(fromMs, toMs) as Array<{ captured_at: number; raw_json: string }>;
+
+  const events: ResetEvent[] = [];
+  const limitsOf = (raw: string): Record<string, { percent: number | null; resets_at: string | null }> => {
+    const parsed = JSON.parse(raw) as { limits?: Array<{ kind: string; percent: number | null; resets_at: string | null }> };
+    const out: Record<string, { percent: number | null; resets_at: string | null }> = {};
+    for (const l of parsed.limits ?? []) out[l.kind] = { percent: l.percent, resets_at: l.resets_at };
+    return out;
+  };
+
+  for (let i = 1; i < rows.length; i++) {
+    const prev = limitsOf(rows[i - 1]!.raw_json);
+    const cur = limitsOf(rows[i]!.raw_json);
+    for (const kind of Object.keys(prev)) {
+      const pa = prev[kind]?.percent;
+      const pb = cur[kind]?.percent;
+      if (pa == null || pb == null) continue;
+      if (pa - pb < minDropPct) continue;
+      const resetAt = prev[kind]?.resets_at;
+      const predictedMs = resetAt != null ? Date.parse(resetAt) : NaN;
+      const predicted = Number.isFinite(predictedMs) && rows[i]!.captured_at >= predictedMs - toleranceMs;
+      events.push({ t: rows[i]!.captured_at, kind, fromPct: pa, toPct: pb, predicted });
+    }
+  }
+  return events;
+}
+
 /**
  * 최신 스냅샷 시각. 대시보드의 시간 앵커다 - 벽시계(Date.now)가 아니라 데이터의 끝을 쓴다.
  * 데모 빌드가 결정적이어야 하고(같은 시드 = 같은 화면), 라이브도 "수집된 마지막 시점"이 정직하다.
