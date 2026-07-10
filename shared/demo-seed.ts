@@ -67,6 +67,14 @@ export function generateSeed(endMs: number, seed = 20260709): Seed {
   const snapshots: SeedSnapshot[] = [];
   const runs: SeedRun[] = [];
 
+  // 실 응답의 불변식: 창의 percent 는 리셋 경계에서만 떨어진다 (사용량은 한 방향으로만 쌓인다).
+  // 레벨에 노이즈를 곱하면 인접 스냅샷이 5%p 이상 출렁여 resetEvents 가 가짜 리셋을 1,200건 넘게
+  // 관측한다 (2026-07-11 실측). 그래서 노이즈는 레벨이 아니라 **증분**에 준다 - 창 안에서 단조 증가.
+  const stepsPerWeek = WEEK / (15 * MIN);
+  const stepsPerSession = (5 * HOUR) / (15 * MIN);
+  let weekAcc = 0;
+  let sessAcc = 0;
+
   for (let t = start; t <= endMs; t += 15 * MIN) {
     // 주간 창: 리셋 경계에서 톱니가 생긴다 (완료 기준 2의 형상).
     const intoWeek = ((t - start) % WEEK) / WEEK;
@@ -74,15 +82,20 @@ export function generateSeed(endMs: number, seed = 20260709): Seed {
     // 5시간 창: 하루 안에서 여러 번 톱니.
     const intoSession = ((t - start) % (5 * HOUR)) / (5 * HOUR);
     const sessionResetsAt = new Date(t + (1 - intoSession) * 5 * HOUR).toISOString();
+    if ((t - start) % WEEK === 0) weekAcc = 0;
+    if ((t - start) % (5 * HOUR) === 0) sessAcc = 0;
 
     // 밤에는 거의 안 쓴다 -> 주간 곡선이 계단처럼 오른다.
     const hourUtc = new Date(t).getUTCHours();
     const active = hourUtc >= 1 && hourUtc <= 15 ? 1 : 0.15;
 
-    const weeklyAll = clamp(intoWeek * 62 * (0.85 + 0.3 * rnd()), 0, 100);
+    const weeklyAll = clamp(weekAcc, 0, 100);
     // Fable 스코프가 항상 먼저 찬다 - 이게 데모가 보여줘야 할 이야기다.
+    // +4*rnd 의 출렁임은 최대 4%p 로 resetEvents 의 기본 문턱(5%p) 아래다.
     const weeklyScoped = clamp(weeklyAll * 1.55 + 4 * rnd(), 0, 100);
-    const fiveHour = clamp(intoSession * 70 * active * (0.7 + 0.6 * rnd()), 0, 100);
+    const fiveHour = clamp(sessAcc, 0, 100);
+    weekAcc += (62 / stepsPerWeek) * (0.85 + 0.3 * rnd());
+    sessAcc += (70 / stepsPerSession) * active * (0.7 + 0.6 * rnd());
 
     snapshots.push({
       t,

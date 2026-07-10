@@ -9,18 +9,21 @@ import { Group } from '@visx/group';
 import { useMeasure } from './useMeasure';
 import { ChartTooltip, type TooltipState } from './ChartTooltip';
 import { utcDate, utcDateTime } from '../../lib/format';
-import type { HeadroomPoint } from '../../../shared/queries.ts';
+import type { HeadroomPoint, ResetEvent } from '../../../shared/queries.ts';
 
 const H = 220;
 const M = { top: 14, right: 14, bottom: 26, left: 38 };
 
 export function HeadroomTrend({
   series,
+  resets,
   fromMs,
   toMs,
   meanUtilization,
 }: {
   series: HeadroomPoint[];
+  /** 이 시리즈(weekly_all)의 리셋 톱니 - resetEvents() 관측값. predicted=false 는 resets_at 이 예고하지 않은 리셋. */
+  resets: ResetEvent[];
   fromMs: number;
   toMs: number;
   meanUtilization: number | null;
@@ -37,14 +40,9 @@ export function HeadroomTrend({
   );
   const y = useMemo(() => scaleLinear<number>({ domain: [0, 100], range: [innerH, 0] }), [innerH]);
 
-  // 리셋 경계: weekly_reset 값이 직전 샘플과 달라지는 지점 (json 원본에서 온 파생 - 인덱스 추측 없음).
-  const resets = useMemo(() => {
-    const out: number[] = [];
-    for (let i = 1; i < series.length; i++) {
-      if (series[i].weeklyReset !== series[i - 1].weeklyReset) out.push(series[i].t);
-    }
-    return out;
-  }, [series]);
+  // 리셋 마커는 resetEvents() 관측값(실제 하락)을 쓴다 - resets_at 문자열 드리프트가 아니다.
+  const predictedCount = resets.filter((r) => r.predicted).length;
+  const unpredictedCount = resets.length - predictedCount;
 
   // 일 단위 표 뷰 (WCAG 쌍둥이): 각 UTC 날짜의 마지막 샘플.
   const daily = useMemo(() => {
@@ -75,21 +73,38 @@ export function HeadroomTrend({
           </g>
         ))}
 
-        {resets.map((t) => (
-          <g key={t}>
-            <line x1={x(t)} x2={x(t)} y1={0} y2={innerH} stroke="var(--baseline)" strokeWidth={1} />
-            <text
-              x={x(t)}
-              y={innerH + 16}
-              textAnchor="middle"
-              fontSize={10}
-              fill="var(--mute)"
-              fontFamily="var(--font-mono)"
-            >
-              {utcDate(t).slice(5)}
-            </text>
-          </g>
-        ))}
+        {/* 리셋 마커. status 색 + 실선/점선 이중 부호화 - 색만으로 전달하지 않는다.
+            예고 없음은 --status-critical: warning 앰버는 라이트 서피스에서 1.5px 선의
+            비텍스트 대비 3:1 을 못 넘는다 (팔레트 검증 결과). */}
+        {resets.map((r) => {
+          const label = r.predicted
+            ? `예고된 주간 리셋 ${utcDateTime(r.t)} UTC · 소진율 ${r.fromPct.toFixed(0)}% -> ${r.toPct.toFixed(0)}%`
+            : `예고 없는 주간 리셋 (resets_at 이 예고하지 않음) ${utcDateTime(r.t)} UTC · 소진율 ${r.fromPct.toFixed(0)}% -> ${r.toPct.toFixed(0)}%`;
+          return (
+            <g key={r.t} role="img" aria-label={label}>
+              <title>{label}</title>
+              <line
+                x1={x(r.t)}
+                x2={x(r.t)}
+                y1={0}
+                y2={innerH}
+                stroke={r.predicted ? 'var(--status-good)' : 'var(--status-critical)'}
+                strokeWidth={1.5}
+                strokeDasharray={r.predicted ? undefined : '4 3'}
+              />
+              <text
+                x={x(r.t)}
+                y={innerH + 16}
+                textAnchor="middle"
+                fontSize={10}
+                fill="var(--mute)"
+                fontFamily="var(--font-mono)"
+              >
+                {utcDate(r.t).slice(5)}
+              </text>
+            </g>
+          );
+        })}
 
         {/* 구간 평균 - 히어로(버려진 헤드룸)의 근거선. 선별적 직접 라벨 */}
         {meanUtilization !== null && (
@@ -197,7 +212,7 @@ export function HeadroomTrend({
           width="100%"
           viewBox={`0 0 ${width} ${H}`}
           role="img"
-          aria-label={`주간 한도 소진율 시계열. 리셋 경계 ${resets.length}회에서 값이 하락한다.${meanUtilization === null ? '' : ` 구간 평균 ${meanUtilization.toFixed(0)}%.`}`}
+          aria-label={`주간 한도 소진율 시계열. 리셋 ${resets.length}회에서 값이 하락한다 (예고된 리셋 ${predictedCount}회, 예고 없는 리셋 ${unpredictedCount}회${unpredictedCount > 0 ? ' - resets_at 이 예고하지 않음' : ''}).${meanUtilization === null ? '' : ` 구간 평균 ${meanUtilization.toFixed(0)}%.`}`}
           tabIndex={0}
           className="block cursor-crosshair focus:outline-1 focus:outline-offset-2 focus:outline-baseline"
           onPointerMove={onPointerMove}
@@ -221,9 +236,24 @@ export function HeadroomTrend({
           </Group>
         </svg>
       </div>
-      <figcaption className="mt-1 flex items-center gap-3 text-xs text-mute">
+      <figcaption className="mt-1 flex flex-wrap items-center gap-3 text-xs text-mute">
         <span aria-hidden className="inline-block h-0.5 w-4 bg-accent" /> weekly_all 소진율 (%)
-        <span aria-hidden className="inline-block h-3 w-px bg-baseline" /> 주간 리셋 경계 (톱니)
+        {predictedCount > 0 && (
+          <>
+            <span aria-hidden className="inline-block h-3 w-0.5" style={{ background: 'var(--status-good)' }} />{' '}
+            예고된 리셋 (실선)
+          </>
+        )}
+        {unpredictedCount > 0 && (
+          <>
+            <span
+              aria-hidden
+              className="inline-block h-3 w-0.5 border-l-2 border-dashed"
+              style={{ borderColor: 'var(--status-critical)' }}
+            />{' '}
+            예고 없는 리셋 (점선 - resets_at 미예고)
+          </>
+        )}
       </figcaption>
 
       <details className="chart-table mt-2 text-xs text-mute">

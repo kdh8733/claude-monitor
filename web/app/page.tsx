@@ -81,6 +81,8 @@ function OverviewPanel({ d, reportMarkdown, reportJson }: {
 }) {
   const abandoned = d.headroom.abandonedPct;
   const used = d.headroom.meanUtilization;
+  // 마커와 경고는 이 차트의 시리즈(weekly_all) 리셋만 본다. session 톱니는 주간 평균과 무관하다.
+  const weeklyResets = d.resets.filter((r) => r.kind === 'weekly_all');
   const projectItems = toStackItems(d.projects.map((p) => ({ ...p, label: p.project })));
   const modelItems = toStackItems(d.models.map((m) => ({ ...m, label: m.model ?? '(모델 미상)' })));
   const sidechainTotal = d.projects.reduce((s, p) => s + p.sidechainEvents, 0);
@@ -126,9 +128,19 @@ function OverviewPanel({ d, reportMarkdown, reportJson }: {
                 </div>
               </div>
 
+              {/* 관측 구간이 리셋을 걸치면 평균이 리셋 직후 값에 눌린다 - 히어로를 가리지 않고 맥락만 준다 (CLAUDE.md 6항의 연장). */}
+              {weeklyResets.length > 0 && (
+                <p className="mt-2 text-xs text-mute">
+                  <span aria-hidden className="mr-1">⚠</span>
+                  이 구간에 주간 리셋 {weeklyResets.length}회 - 평균이 리셋 직후 값에 눌릴 수
+                  있음 (버려진 헤드룸 과대평가 가능).
+                </p>
+              )}
+
               <div className="mt-5">
                 <HeadroomTrend
                   series={d.series}
+                  resets={weeklyResets}
                   fromMs={d.fromMs}
                   toMs={d.anchorMs + 1}
                   meanUtilization={used}
@@ -325,8 +337,14 @@ function AttributionPanel({ d }: { d: DashboardData }) {
 
 // ---- 수집 상태 탭 ----
 
+const RESET_ROWS_MAX = 20;
+
 function CollectionPanel({ d }: { d: DashboardData }) {
   const fired = d.gaps.ok + d.gaps.failed;
+  // 최신이 위로. session 톱니가 다수라 표는 최근 N건만 - 전체 수는 함께 밝힌다.
+  const resetsDesc = [...d.resets].sort((a, b) => b.t - a.t);
+  const resetRows = resetsDesc.slice(0, RESET_ROWS_MAX);
+  const unpredictedTotal = d.resets.filter((r) => !r.predicted).length;
   const tiles: Array<{ label: string; value: string; note: string; warn?: boolean }> = [
     { label: '결손율', value: `${d.gaps.gapPct.toFixed(1)}%`, note: `실패 ${num(d.gaps.failed)} / 발화 ${num(fired)}` },
     { label: '성공 슬롯', value: num(d.gaps.ok), note: 'status = ok' },
@@ -349,6 +367,54 @@ function CollectionPanel({ d }: { d: DashboardData }) {
           </Card>
         ))}
       </div>
+
+      <Card>
+        <PanelHeading kicker="RESET" title="관측된 리셋 이벤트" />
+        <p className="mb-3 text-xs text-mute">
+          스냅샷 간 소진율이 5%p 이상 하락한 지점 (완료 기준 2). 구간 전체 {num(d.resets.length)}건
+          중 예고 없음 {num(unpredictedTotal)}건 - 예고 없음은 직전 스냅샷의 resets_at 이
+          예고하지 않은 리셋이다 (실측상 존재한다).
+        </p>
+        {d.resets.length === 0 ? (
+          <p className="text-sm text-mute">이 구간에 관측된 리셋 톱니가 없습니다.</p>
+        ) : (
+          <>
+            <table className="w-full max-w-xl border-collapse text-xs">
+              <thead>
+                <tr>
+                  <th scope="col" className="border-b border-grid px-2 py-1.5 text-left font-semibold text-ink2">시각 (UTC)</th>
+                  <th scope="col" className="border-b border-grid px-2 py-1.5 text-left font-semibold text-ink2">스코프</th>
+                  <th scope="col" className="border-b border-grid px-2 py-1.5 text-right font-semibold text-ink2">소진율 변화</th>
+                  <th scope="col" className="border-b border-grid px-2 py-1.5 text-left font-semibold text-ink2">예고 여부</th>
+                </tr>
+              </thead>
+              <tbody>
+                {resetRows.map((r) => (
+                  <tr key={`${r.t}-${r.kind}`}>
+                    <td className="border-b border-grid px-2 py-1.5 tabular-nums text-ink2">{utcDateTime(r.t)}</td>
+                    <td className="border-b border-grid px-2 py-1.5 text-ink">{r.kind}</td>
+                    <td className="border-b border-grid px-2 py-1.5 text-right tabular-nums text-ink2">
+                      {r.fromPct.toFixed(0)}% -&gt; {r.toPct.toFixed(0)}%
+                    </td>
+                    <td className="border-b border-grid px-2 py-1.5 text-ink2">
+                      {r.predicted ? '예고됨' : (
+                        <span title="resets_at 이 예고하지 않은 리셋">
+                          <span aria-hidden className="mr-1">⚠</span>예고 없음
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {d.resets.length > RESET_ROWS_MAX && (
+              <p className="mt-2 text-xs text-mute">
+                최근 {RESET_ROWS_MAX}건만 표시 (전체 {num(d.resets.length)}건 - session 톱니 포함).
+              </p>
+            )}
+          </>
+        )}
+      </Card>
 
       <Card>
         <PanelHeading kicker="HEARTBEAT" title="일 단위 수집 상태" />

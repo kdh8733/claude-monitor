@@ -20,6 +20,7 @@ import {
   hourlyUsage,
   latestCapturedAt,
   latestRunAt,
+  resetEvents,
   scopeRanking,
   type CollectionGaps,
   type HeadroomPoint,
@@ -27,6 +28,7 @@ import {
   type HourlyUsage,
   type ModelAttribution,
   type ProjectAttribution,
+  type ResetEvent,
   type RunDaily,
   type ScopeRank,
 } from '../../shared/queries.ts';
@@ -47,6 +49,8 @@ export interface DashboardData {
   rangeDays: number;
   headroom: HeadroomSummary;
   series: HeadroomPoint[];
+  /** 구간 내 리셋 톱니 (전 스코프). predicted=false 는 resets_at 이 예고하지 않은 리셋이다 (완료 기준 2). */
+  resets: ResetEvent[];
   scopes: ScopeRank[];
   projects: ProjectAttribution[];
   models: ModelAttribution[];
@@ -108,6 +112,7 @@ export function getDashboardData(): DashboardData {
       rangeDays: RANGE_DAYS,
       headroom: abandonedHeadroom(db, fromMs, toMs),
       series: headroomSeries(db, fromMs, toMs),
+      resets: resetEvents(db, fromMs, toMs),
       scopes: scopeRanking(db, anchorMs),
       projects,
       models: attributionByModel(db, fromMs, toMs),

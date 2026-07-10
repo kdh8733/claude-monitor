@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { migrate } from '../collector/db.ts';
 import { generateSeed, loadSeed, seedRawJson } from './demo-seed.ts';
-import { abandonedHeadroom, scopeRanking, attributionByProject, collectionGaps } from './queries.ts';
+import { abandonedHeadroom, scopeRanking, attributionByProject, collectionGaps, resetEvents } from './queries.ts';
 
 const END = Date.parse('2026-07-09T12:00:00Z');
 
@@ -69,6 +69,14 @@ test('the seed produces a weekly sawtooth (completion criterion 2 shape)', () =>
   const vals = seed.snapshots.map((s) => s.weeklyAll);
   const drops = vals.filter((v, i) => i > 0 && v < vals[i - 1]! - 30).length;
   assert.ok(drops >= 3, `주간 리셋 하락이 ${drops} 회뿐이다 (4주면 3회 이상이어야 한다)`);
+});
+
+test('the seed yields weekly_all reset events in the dashboard window - the trend markers depend on this', () => {
+  const db = seededDb();
+  // 대시보드와 같은 윈도우: 최근 28일 (web/lib/data.ts 의 RANGE_DAYS).
+  const ev = resetEvents(db, END - 28 * 86_400_000, END + 1);
+  const weekly = ev.filter((e) => e.kind === 'weekly_all');
+  assert.ok(weekly.length >= 1, '데모 시드에 weekly_all 리셋 톱니가 없다 - 트렌드 차트에 마커가 렌더되지 않는다');
 });
 
 test('the seed has attributable projects and separately counted subagents', () => {
