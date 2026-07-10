@@ -255,6 +255,28 @@ Windows 트랜스크립트에도 해당 시각 활동이 0건이므로 멀티머
   - 실패/불가 시: ride-along 유지. `auth_skip` 을 영구 지표로 노출한다.
   - 의존: 없음 (M1과 병렬 조사 가능)
 
+  #### 1차 문서 조사 (2026-07-10). **아직 안 열렸다.**
+
+  - **확인함**: `ant auth login --profile <name>` 의 프로필은
+    `~/.config/anthropic/credentials/<profile>.json` 에 저장된다. 본체 Claude Code 는
+    `~/.claude/.credentials.json` 을 쓴다. **저장소가 분리돼 있다.** 출처:
+    <https://platform.claude.com/docs/en/cli-sdks-libraries/cli/authentication>
+  - **확인함**: refresh token 은 hard-expire 한다 - 사용해도 수명이 연장되지 않는다
+    ("they don't slide with use"). 같은 출처.
+  - **확인 못 함 (핵심 질문이 그대로 남았다)**: refresh token 이 **회전**하는지.
+    공식 문서에 명시가 없다. hard-expire 는 회전과 다른 얘기다.
+  - **확인 못 함**: 별도 프로필 토큰으로 `/api/oauth/usage` 를 부를 수 있는지. 미문서 엔드포인트다.
+  - **미해결 리스크**: 공식 문서에 "Claude Code 가 프로필과 자기 로그인 사이의 auth 충돌을 경고할 수
+    있다"는 언급이 있다. 프로필 생성이 본체에 무해하다는 것이 **문서로 확정되지 않았다.**
+
+  **다음 단계는 사용자만 할 수 있고, 아직 승인되지 않았다.** `ant auth login --profile collector` 는
+  브라우저 인증이며 본체 무해성이 미확정이다. (1차 조사 보고는 이 명령을 "완전 비파괴"라 썼다가
+  경고 목록에서는 "실행 금지"로 분류했다. 자기모순이므로 안전한 쪽을 택한다.)
+
+  **별도 확인 필요**: `/api/oauth/usage` 를 개인 수집기가 폴링하는 것이 이용약관상 허용되는지.
+  조사에서 "OAuth 사용이 Claude Code 와 claude.ai 로 제한된다"는 3자 출처가 나왔으나
+  **공식 문서로 확인하지 못했다.** 공개 레포이므로 README 에 이 불확실성을 명시한다.
+
 ## 후순위 / 보류
 
 - **원격/멀티머신 수집 데몬** - M6의 어댑터로 확장 지점만 열어둔다.
