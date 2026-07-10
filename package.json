@@ -7,7 +7,8 @@
     "typecheck": "tsc --noEmit",
     "dev": "next dev web",
     "build": "next build web",
-    "start": "next start web"
+    "start": "next start web",
+    "deploy": "npm run build && mkdir -p web/out/.vercel && cp web/.vercel/project.json web/out/.vercel/project.json && cd web/out && vercel deploy --prod --yes"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.2",
