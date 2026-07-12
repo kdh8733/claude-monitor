@@ -76,6 +76,11 @@ jobs:
             "$(case "$T" in *'"'*|*"'"*) echo yes;; *) echo no;; esac)" \
             "$(printf '%s' "$T" | wc -l)"
           printf 'starts_with_prefix=%s\n' "$(case "$T" in [A-Za-z0-9]*) echo yes;; *) echo no;; esac)"
+          # 값을 노출하지 않고 첫 3자/끝 3자만 마스킹해 보여준다 (오염 위치 파악).
+          printf 'first3=%s...  last3=...%s\n' "$(printf '%s' "$T" | cut -c1-3)" "$(printf '%s' "$T" | rev | cut -c1-3 | rev)"
+          printf 'tilde_at_start=%s tilde_at_end=%s\n' \
+            "$(case "$T" in "~"*) echo yes;; *) echo no;; esac)" \
+            "$(case "$T" in *"~") echo yes;; *) echo no;; esac)"
 
       # 토큰은 --token 인자가 아니라 VERCEL_TOKEN 환경변수로 넘긴다 (프로세스 목록 노출 방지).
       - name: deploy to vercel
