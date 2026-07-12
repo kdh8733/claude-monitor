@@ -63,13 +63,29 @@ jobs:
 
       # VERCEL_ORG_ID / VERCEL_PROJECT_ID 만 있으면 CLI 가 링크 없이도 같은 프로젝트를 찾는다
       # (로컬에서 링크 없는 디렉터리로 검증함. 없으면 새 프로젝트를 만들어버린다).
+      # 토큰 형태 진단 (값은 마스킹). "~"·공백·따옴표가 섞이면 여기서 드러난다.
+      - name: check token shape
+        if: env.HAS_TOKEN == 'true'
+        env:
+          T: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          printf 'length=%s\n' "${#T}"
+          printf 'has_tilde=%s has_space=%s has_quote=%s has_newline=%s\n' \
+            "$(case "$T" in *"~"*) echo yes;; *) echo no;; esac)" \
+            "$(case "$T" in *" "*) echo yes;; *) echo no;; esac)" \
+            "$(case "$T" in *'"'*|*"'"*) echo yes;; *) echo no;; esac)" \
+            "$(printf '%s' "$T" | wc -l)"
+          printf 'starts_with_prefix=%s\n' "$(case "$T" in [A-Za-z0-9]*) echo yes;; *) echo no;; esac)"
+
+      # 토큰은 --token 인자가 아니라 VERCEL_TOKEN 환경변수로 넘긴다 (프로세스 목록 노출 방지).
       - name: deploy to vercel
         if: env.HAS_TOKEN == 'true'
         working-directory: web/out
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-        run: npx vercel@latest deploy --prod --yes --token "${{ secrets.VERCEL_TOKEN }}"
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: npx vercel@latest deploy --prod --yes
 
       - name: skipped (no token)
         if: env.HAS_TOKEN != 'true'
