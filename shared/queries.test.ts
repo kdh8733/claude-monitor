@@ -13,6 +13,8 @@ import {
   abandonedHeadroom,
   scopeRanking,
   resetEvents,
+  currentCapacity,
+  gaugeConsumptionByHour,
   attributionByProject,
   attributionByModel,
   hourlyUsage,
@@ -259,6 +261,82 @@ test('resetEvents: each scope is tracked independently', () => {
   const ev = resetEvents(db, 0, Date.parse('2026-07-11T00:00:00Z'));
   assert.equal(ev.length, 1);
   assert.equal(ev[0]!.kind, 'session');
+});
+
+// ---- 3c. currentCapacity / gaugeConsumptionByHour (관측 강화 A) ----
+
+test('currentCapacity: latest snapshot limits with minutes-to-reset from the anchor', () => {
+  const anchor = Date.parse('2026-07-13T00:00:00Z');
+  const db = seededReadOnlyDb((w) => {
+    insertSnapshot(w, '2026-07-12T23:55:00Z', {
+      five_hour: { utilization: 0 }, seven_day: { utilization: 0 },
+      limits: [
+        { kind: 'session', percent: 14, is_active: true, resets_at: '2026-07-13T00:30:00Z', scope: null },
+        { kind: 'weekly_all', percent: 4, is_active: false, resets_at: '2026-07-17T13:00:00Z', scope: null },
+        { kind: 'weekly_scoped', percent: 3, is_active: false, resets_at: '2026-07-17T13:00:00Z', scope: { model: { display_name: 'Fable' } } },
+      ],
+    });
+  });
+  const cap = currentCapacity(db, anchor);
+  assert.equal(cap.length, 3);
+  const session = cap.find((c) => c.kind === 'session')!;
+  assert.equal(session.percent, 14);
+  assert.equal(session.isActive, true);
+  assert.equal(session.minutesToReset, 30); // 00:00 -> 00:30
+  assert.equal(cap.find((c) => c.kind === 'weekly_scoped')!.scopeModel, 'Fable');
+});
+
+test('currentCapacity: a reset already in the past yields null minutes, not negative', () => {
+  const anchor = Date.parse('2026-07-13T00:00:00Z');
+  const db = seededReadOnlyDb((w) => {
+    insertSnapshot(w, '2026-07-12T23:55:00Z', {
+      limits: [{ kind: 'session', percent: 0, is_active: true, resets_at: '2026-07-12T20:00:00Z', scope: null }],
+    });
+  });
+  assert.equal(currentCapacity(db, anchor)[0]!.minutesToReset, null);
+});
+
+test('currentCapacity: empty db -> empty array', () => {
+  const db = seededReadOnlyDb(() => {});
+  assert.deepEqual(currentCapacity(db, Date.now()), []);
+});
+
+// 게이지 상승분이 권위 있는 소비 신호다. 리셋(음의 델타)은 소비가 아니다.
+test('gaugeConsumptionByHour: sums positive deltas, ignores resets', () => {
+  const db = seededReadOnlyDb((w) => {
+    const at = (iso: string, pct: number) => insertSnapshot(w, iso, { limits: [{ kind: 'session', percent: pct, is_active: true, resets_at: null, scope: null }] });
+    at('2026-07-12T05:00:00Z', 10); // 05시 UTC 기준점
+    at('2026-07-12T05:30:00Z', 30); // +20 소비 -> 05시
+    at('2026-07-12T06:00:00Z', 50); // +20 소비 -> 06시
+    at('2026-07-12T06:30:00Z', 0);  // 리셋(-50) -> 소비 아님, 06시 표본만
+  });
+  const h = gaugeConsumptionByHour(db, 0, Date.parse('2026-07-13T00:00:00Z'));
+  assert.equal(h[5]!.consumption, 20);
+  assert.equal(h[6]!.consumption, 20); // 리셋 델타는 안 더해짐
+  assert.equal(h.reduce((s, x) => s + x.consumption, 0), 40);
+});
+
+test('gaugeConsumptionByHour: a NULL gap breaks continuity (no phantom delta)', () => {
+  const db = seededReadOnlyDb((w) => {
+    insertSnapshot(w, '2026-07-12T05:00:00Z', { limits: [{ kind: 'session', percent: 60, is_active: true, resets_at: null, scope: null }] });
+    // session 이 없는 스냅샷 (응답 구멍) - 연속성이 끊겨야 한다
+    insertSnapshot(w, '2026-07-12T05:30:00Z', { limits: [] });
+    insertSnapshot(w, '2026-07-12T06:00:00Z', { limits: [{ kind: 'session', percent: 10, is_active: true, resets_at: null, scope: null }] });
+  });
+  // 60 -> (구멍) -> 10 이 -50 이나 +? 로 이어지면 안 된다. 총 소비 0.
+  assert.equal(gaugeConsumptionByHour(db, 0, Date.parse('2026-07-13T00:00:00Z')).reduce((s, x) => s + x.consumption, 0), 0);
+});
+
+test('gaugeConsumptionByHour: tracks the requested scope, not just session', () => {
+  const db = seededReadOnlyDb((w) => {
+    const at = (iso: string, s: number, wa: number) => insertSnapshot(w, iso, { limits: [
+      { kind: 'session', percent: s, is_active: true, resets_at: null, scope: null },
+      { kind: 'weekly_all', percent: wa, is_active: false, resets_at: null, scope: null },
+    ] });
+    at('2026-07-12T05:00:00Z', 10, 2);
+    at('2026-07-12T05:30:00Z', 40, 5); // session +30, weekly_all +3
+  });
+  assert.equal(gaugeConsumptionByHour(db, 0, Date.parse('2026-07-13T00:00:00Z'), 'weekly_all')[5]!.consumption, 3);
 });
 
 // ---- 4. 귀속 집계 ----

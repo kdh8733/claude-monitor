@@ -8,22 +8,18 @@ import { ThemeToggle } from '../components/ThemeToggle';
 import { Tabs } from '../components/Tabs';
 import { ReportActions } from '../components/ReportActions';
 import { AttributionTable, type AttributionRow } from '../components/AttributionTable';
+import { CapacityReadout } from '../components/CapacityReadout';
+import { ConsumptionByHour } from '../components/charts/ConsumptionByHour';
 import { HeadroomTrend } from '../components/charts/HeadroomTrend';
 import { ScopeGauge } from '../components/charts/ScopeGauge';
 import { AttributionStack, type StackItem } from '../components/charts/AttributionStack';
 import { HourHeatmap } from '../components/charts/HourHeatmap';
 import { RunStrip } from '../components/charts/RunStrip';
 import { getDashboardData, MODE, type DashboardData } from '../lib/data';
-import { formatUsd, untilReset, utcDate, utcDateTime } from '../lib/format';
+import { formatUsd, scopeName, untilReset, utcDate, utcDateTime } from '../lib/format';
 import { SERIES_VARS } from '../lib/palette';
 import { billableTokens, type TokenTotals } from '../../shared/queries.ts';
 import { buildReportJson, buildReportMarkdown, type ReportInput } from '../../shared/report.ts';
-
-const SCOPE_LABEL: Record<string, string> = {
-  session: 'session (5시간 창)',
-  weekly_all: 'weekly_all (주간 전체)',
-  weekly_scoped: 'weekly_scoped',
-};
 
 /**
  * 귀속 그룹 -> 스택 아이템. 색은 엔티티의 알파벳순 인덱스에 고정된다 (순위가 아니다).
@@ -157,10 +153,7 @@ function OverviewPanel({ d, reportMarkdown, reportJson }: {
           ) : (
             <ol className="divide-y divide-grid">
               {d.scopes.map((s, i) => {
-                const name =
-                  s.kind === 'weekly_scoped' && s.scopeModel !== null
-                    ? `weekly_scoped · ${s.scopeModel}`
-                    : (SCOPE_LABEL[s.kind] ?? s.kind);
+                const name = scopeName(s.kind, s.scopeModel);
                 const reset = untilReset(s.resetsAt, d.anchorMs);
                 return (
                   <li key={s.kind + (s.scopeModel ?? '')} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
@@ -189,6 +182,25 @@ function OverviewPanel({ d, reportMarkdown, reportJson }: {
           <p className="mt-3 border-t border-grid pt-2 text-xs text-mute">
             소진율은 /api/oauth/usage 스냅샷의 limits[].percent. &quot;지금 바인딩&quot;(is_active)의
             의미는 추정이며 관측 중이다 (ROADMAP 열린 질문).
+          </p>
+        </Card>
+      </div>
+
+      {/* 쓰기 좋은 때 - 관측 패널. 상태 리드아웃(Q3) + 소비 시간대(Q4). 예측이 아니라 관측이다. */}
+      <div className="mt-4 grid gap-4 lg:grid-cols-5">
+        <Card className="lg:col-span-2">
+          <PanelHeading kicker="Q3" title="지금 얼마나 비어 있나?" />
+          <CapacityReadout capacity={d.capacity} />
+          <p className="mt-3 border-t border-grid pt-2 text-xs text-mute">
+            최신 스냅샷의 limits[] 관측치. 카운트다운은 마지막 수집 시각 기준이다 (벽시계 아님).
+          </p>
+        </Card>
+        <Card className="lg:col-span-3">
+          <PanelHeading kicker="Q4" title="언제가 습관적으로 비나?" />
+          <ConsumptionByHour data={d.sessionByHour} />
+          <p className="mt-3 border-t border-grid pt-2 text-xs text-mute">
+            관측치이지 예측이 아니다. 웹/데스크톱 사용도 같은 한도를 소모하며 이 게이지 신호에
+            포함되어 있다. 관측 {d.rangeDays}일치.
           </p>
         </Card>
       </div>
@@ -474,7 +486,7 @@ export default async function Page() {
             </span>
           </div>
           <p className="mt-1 text-sm text-ink2">
-            Claude Max 한도 소진율과 사용 귀속의 장기 기록
+            Claude 구독 한도 소진율 모니터링
           </p>
         </div>
         <div className="flex items-center gap-4">

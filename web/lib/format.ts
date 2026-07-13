@@ -28,6 +28,30 @@ export function utcDateTime(ms: number): string {
   return `${iso.slice(5, 10)} ${iso.slice(11, 16)}`;
 }
 
+const SCOPE_LABEL: Record<string, string> = {
+  session: 'session (5시간 창)',
+  weekly_all: 'weekly_all (주간 전체)',
+};
+
+/** limits[] 한 항목의 표시 이름. weekly_scoped 는 모델명을 붙이고, 나머지는 라벨 맵 또는 kind 그대로. */
+export function scopeName(kind: string, scopeModel: string | null): string {
+  if (kind === 'weekly_scoped' && scopeModel !== null) return `weekly_scoped · ${scopeModel}`;
+  return SCOPE_LABEL[kind] ?? kind;
+}
+
+/**
+ * 분 단위 카운트다운 -> "약 4h 0m 후" / "약 1d 0h 후". 입력은 currentCapacity 의
+ * minutesToReset (항상 양수 - 과거/미상은 쿼리가 null 로 준다. null 처리는 호출부 몫).
+ */
+export function approxAfter(minutes: number): string {
+  const d = Math.floor(minutes / (24 * 60));
+  const h = Math.floor((minutes % (24 * 60)) / 60);
+  const m = minutes % 60;
+  if (d > 0) return `약 ${d}d ${h}h 후`;
+  if (h > 0) return `약 ${h}h ${m}m 후`;
+  return `약 ${m}m 후`;
+}
+
 /** 앵커 기준 리셋까지 남은 시간. "D-1 4h" / "3h 20m" / "지남" */
 export function untilReset(resetsAtIso: string | null, anchorMs: number): string | null {
   if (resetsAtIso === null) return null;

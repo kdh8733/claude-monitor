@@ -18,7 +18,7 @@ const plexMono = IBM_Plex_Mono({
 
 export const metadata: Metadata = {
   title: 'claude-monitor',
-  description: 'Claude Max 한도 소진율과 사용 귀속의 장기 기록',
+  description: 'Claude 구독 한도 소진율 모니터링',
 };
 
 // 저장된 테마를 첫 페인트 전에 적용한다. 저장값이 없으면 attr 를 두지 않아 media query 가 지배한다.

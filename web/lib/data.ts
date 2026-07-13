@@ -16,13 +16,17 @@ import {
   attributionByProject,
   collectionGaps,
   collectorRunDaily,
+  currentCapacity,
+  gaugeConsumptionByHour,
   headroomSeries,
   hourlyUsage,
   latestCapturedAt,
   latestRunAt,
   resetEvents,
   scopeRanking,
+  type CapacityLimit,
   type CollectionGaps,
+  type HourConsumption,
   type HeadroomPoint,
   type HeadroomSummary,
   type HourlyUsage,
@@ -60,6 +64,10 @@ export interface DashboardData {
   runDaily: RunDaily[];
   /** 마지막 snapshot run 발화 시각 (heartbeat). auth_skip 도 발화다. */
   lastRunAt: number | null;
+  /** 관측 강화 A: 최신 한도 현황 + 리셋 카운트다운. "지금 쓰기 좋은가"의 관측 근거. */
+  capacity: CapacityLimit[];
+  /** 관측 강화 A: session 게이지 상승분의 시간대 분포 (권위 있는 소비 신호, 웹 사용 포함). */
+  sessionByHour: HourConsumption[];
   /** 구간 합계. null = 단가 미상 이벤트 포함("모른다"이지 0이 아니다). **청구액이 아니다** (CLAUDE.md 6항). */
   apiEquivalentUsd: number | null;
 }
@@ -120,6 +128,8 @@ export function getDashboardData(): DashboardData {
       gaps: collectionGaps(db, fromMs, toMs),
       runDaily: collectorRunDaily(db, fromMs, toMs),
       lastRunAt: latestRunAt(db),
+      capacity: currentCapacity(db, anchorMs),
+      sessionByHour: gaugeConsumptionByHour(db, fromMs, toMs),
       apiEquivalentUsd,
     };
   } finally {

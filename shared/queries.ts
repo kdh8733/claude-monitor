@@ -176,6 +176,94 @@ export function latestCapturedAt(db: DatabaseSync): number | null {
   return row.t;
 }
 
+// ---- 관측 강화 A: "지금 쓰기 좋은가" + 소비 시간대 ----
+
+export interface CapacityLimit {
+  kind: string;
+  percent: number | null;
+  isActive: boolean;
+  resetsAt: string | null;
+  /** anchorMs 기준 리셋까지 남은 분. resets_at 이 없거나 과거면 null. */
+  minutesToReset: number | null;
+  scopeModel: string | null;
+}
+
+/**
+ * 최신 스냅샷의 각 한도 현황 + 리셋까지 남은 시간. "지금 몰아 쓰기 좋은가"의 관측 근거.
+ * anchorMs 는 호출자가 준다(보통 latestCapturedAt) - 벽시계가 아니라 데이터의 끝을 앵커로 삼아
+ * 정적 빌드가 결정적이게 한다. **예측이 아니라 관측이다** - 웹/데스크톱 사용도 이 게이지를 움직인다.
+ */
+export function currentCapacity(db: DatabaseSync, anchorMs: number): CapacityLimit[] {
+  const snap = db.prepare('SELECT raw_json FROM snapshot ORDER BY captured_at DESC, id DESC LIMIT 1')
+    .get() as { raw_json: string } | undefined;
+  if (snap === undefined) return [];
+  const parsed = JSON.parse(snap.raw_json) as {
+    limits?: Array<{ kind: string; percent: number | null; is_active: boolean; resets_at: string | null; scope?: { model?: { display_name?: string | null } | null } | null }>;
+  };
+  return (parsed.limits ?? []).map((l) => {
+    const resetMs = l.resets_at != null ? Date.parse(l.resets_at) : NaN;
+    const minutesToReset = Number.isFinite(resetMs) && resetMs > anchorMs
+      ? Math.round((resetMs - anchorMs) / 60_000)
+      : null;
+    return {
+      kind: l.kind,
+      percent: l.percent,
+      isActive: l.is_active === true,
+      resetsAt: l.resets_at,
+      minutesToReset,
+      scopeModel: l.scope?.model?.display_name ?? null,
+    };
+  });
+}
+
+export interface HourConsumption {
+  /** 0..23, UTC 시. UI 가 원하는 타임존으로 옮긴다. */
+  hourUtc: number;
+  /** 이 시간대에 관측된 게이지 상승분 합(%p). 리셋(음의 델타)은 제외한 순수 소비. */
+  consumption: number;
+  /** 이 시간대의 델타 관측 수. 표본이 적으면 신뢰도가 낮다. */
+  samples: number;
+}
+
+/**
+ * **권위 있는 소비 신호.** 트랜스크립트 토큰이 아니라 한도 게이지의 상승분으로 "언제 쓰나"를 본다.
+ * 트랜스크립트는 Claude Code 안만 보지만, 게이지는 웹/데스크톱 사용까지 포함한다 (반증된 가설 참조).
+ *
+ * 한 스코프(`kind`, 기본 session)의 percent 를 시간순으로 훑어 양의 델타만 그 시각의 시간대에 더한다.
+ * 리셋(음의 델타)과 파생 컬럼 NULL 구간은 연속성을 끊어 가짜 델타를 만들지 않는다.
+ */
+export function gaugeConsumptionByHour(
+  db: DatabaseSync,
+  fromMs: number,
+  toMs: number,
+  kind = 'session',
+): HourConsumption[] {
+  const rows = db.prepare(`
+    SELECT captured_at, raw_json FROM snapshot
+    WHERE captured_at >= ? AND captured_at < ?
+    ORDER BY captured_at
+  `).all(fromMs, toMs) as Array<{ captured_at: number; raw_json: string }>;
+
+  const consumption = new Array(24).fill(0) as number[];
+  const samples = new Array(24).fill(0) as number[];
+  let prev: number | null = null;
+
+  for (const r of rows) {
+    const parsed = JSON.parse(r.raw_json) as { limits?: Array<{ kind: string; percent: number | null }> };
+    const pct = (parsed.limits ?? []).find((l) => l.kind === kind)?.percent ?? null;
+    if (pct == null) { prev = null; continue; } // 구멍 - 연속성을 끊는다
+    if (prev != null) {
+      const hour = new Date(r.captured_at).getUTCHours();
+      samples[hour]! += 1;
+      const delta = pct - prev;
+      if (delta > 0) consumption[hour]! += delta; // 소비만. 리셋은 버린다
+    }
+    prev = pct;
+  }
+
+  return consumption.map((c, hourUtc) => ({ hourUtc, consumption: c, samples: samples[hourUtc]! }));
+}
+
 // ---- 가장 먼저 차는 스코프 (완료 기준 5, 둘째 질문) ----
 
 export interface ScopeRank {
